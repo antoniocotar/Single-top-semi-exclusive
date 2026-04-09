@@ -1,0 +1,60 @@
+#!/bin/bash
+#SBATCH --job-name=general_hadd
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=1
+#SBATCH --time=04:00:00
+#SBATCH --partition=cpu
+#SBATCH --output=logs_general_sample/general_hadd_output_%j.log
+#SBATCH --error=logs_general_sample/general_hadd_error_%j.log
+
+module load conda
+source activate latest_root
+
+# Default values. These can be overridden from sbatch --export.
+OUTPUT_DIR=${OUTPUT_DIR:-"/lustre/home/amendieta/guille/Pp_Alessio/singletop/samples_processed/pomeron/top_pomeron_pomset4_pomflux7"}
+OUTPUT_BASENAME=${OUTPUT_BASENAME:-"top_pomeron_pomset4_pomflux7_processed"}
+FINAL_OUTPUT_DIR=${FINAL_OUTPUT_DIR:-"/lustre/proyectos/p018/single-top_semi-exclusive/samples/processed"}
+FINAL_OUTPUT_NAME=${FINAL_OUTPUT_NAME:-"${OUTPUT_BASENAME}.root"}
+
+mkdir -p logs_general_sample
+mkdir -p "$FINAL_OUTPUT_DIR"
+
+FINAL_OUTPUT_FILE="${FINAL_OUTPUT_DIR}/${FINAL_OUTPUT_NAME}"
+INPUT_GLOB="${OUTPUT_DIR}/${OUTPUT_BASENAME}_*.root"
+
+echo "=== Starting hadd job: JobID=$SLURM_JOB_ID ==="
+echo "Start time: $(date)"
+echo "OUTPUT_DIR        = $OUTPUT_DIR"
+echo "OUTPUT_BASENAME   = $OUTPUT_BASENAME"
+echo "FINAL_OUTPUT_FILE = $FINAL_OUTPUT_FILE"
+
+shopt -s nullglob
+chunk_files=( ${INPUT_GLOB} )
+shopt -u nullglob
+
+if [ ${#chunk_files[@]} -eq 0 ]; then
+  echo "ERROR: no chunk ROOT files found matching $INPUT_GLOB"
+  exit 1
+fi
+
+echo "Found ${#chunk_files[@]} chunk files"
+
+hadd -f "$FINAL_OUTPUT_FILE" "${chunk_files[@]}"
+HADD_EXIT_CODE=$?
+
+if [ $HADD_EXIT_CODE -ne 0 ]; then
+  echo "ERROR: hadd failed with exit code $HADD_EXIT_CODE"
+  exit $HADD_EXIT_CODE
+fi
+
+if [ -f "$FINAL_OUTPUT_FILE" ]; then
+  echo "Success: merged ROOT file created"
+  echo "Size: $(du -h "$FINAL_OUTPUT_FILE")"
+else
+  echo "ERROR: merged ROOT file was not created"
+  exit 1
+fi
+
+echo "Time completed: $(date)"
+echo "=== Job completed ==="
