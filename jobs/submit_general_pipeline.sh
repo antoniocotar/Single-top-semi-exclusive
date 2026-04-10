@@ -39,8 +39,37 @@ if [ ! -f "$RUN_HADD_SLURM" ]; then
   exit 1
 fi
 
+module load conda
+source activate latest_root
+
+TOTAL_ENTRIES=$(root -l -b -q -e "
+TFile f(\"${INPUT_FILE}\");
+TTree *t = (TTree*)f.Get(\"Delphes\");
+if (!t) { std::cerr << \"NO_TREE\" << std::endl; gSystem->Exit(1); }
+std::cout << t->GetEntries() << std::endl;
+gSystem->Exit(0);
+" 2>/dev/null | tail -n 1)
+
+
+if ! [[ "$TOTAL_ENTRIES" =~ ^[0-9]+$ ]]; then
+  echo "ERROR: could not determine total entries for $INPUT_FILE"
+  exit 1
+fi
+
+TOTAL_CHUNKS=$(( (TOTAL_ENTRIES + CHUNK_SIZE - 1) / CHUNK_SIZE ))
+if [ "$TOTAL_CHUNKS" -le 0 ]; then
+  echo "ERROR: total chunks computed as $TOTAL_CHUNKS"
+  exit 1
+fi
+
+LAST_TASK=$((TOTAL_CHUNKS - 1))
+
+echo "TOTAL_ENTRIES = $TOTAL_ENTRIES"
+echo "CHUNK_SIZE    = $CHUNK_SIZE"
+echo "TOTAL_CHUNKS  = $TOTAL_CHUNKS"
+
 EXPORT_VARS="ALL,SAMPLE_TYPE=${SAMPLE_TYPE},INPUT_FILE=${INPUT_FILE},OUTPUT_DIR=${OUTPUT_DIR},OUTPUT_BASENAME=${OUTPUT_BASENAME},CHUNK_SIZE=${CHUNK_SIZE}"
-ARRAY_SUBMISSION=$(sbatch --export="$EXPORT_VARS" "$RUN_SAMPLE_SLURM")
+ARRAY_SUBMISSION=$(sbatch --array="0-${LAST_TASK}" --export="$EXPORT_VARS" "$RUN_SAMPLE_SLURM")
 ARRAY_JOB_ID=$(echo "$ARRAY_SUBMISSION" | awk '{print $4}')
 
 if [ -z "$ARRAY_JOB_ID" ]; then
